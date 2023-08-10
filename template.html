@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>${title} - gallery</title>
+<style type="text/css">
+body {
+	font-family: Arial, sans-serif;
+	height: 100vh;
+	margin: 0;
+	background: #444;
+	color: #bbb;
+	display: flex;
+	justify-content: space-evenly;
+	overflow: hidden;
+}
+
+.main {
+	flex: 1 0 66%;
+	text-align: center;
+	align-self: center;
+	& h1 {
+		margin-bottom: 2rem;
+	}
+	& img {
+		width: 80%;
+		margin-bottom: 2rem;
+	}
+}
+
+.right {
+	flex: 1 0 33%;
+	text-align: center;
+	overflow-y: scroll;
+	& img {
+		width: 50%;
+	}
+	& h1 {
+		margin: 2rem;
+	}
+	& h2 {
+		font-size: 1.2rem;
+		margin: 0 1rem 2rem 1rem;
+	}
+	& a  {
+		color: inherit;
+		text-decoration: inherit;
+		&:hover {
+			text-decoration: underline;
+		}
+	}
+}
+</style>
+<script type="text/javascript">
+
+function view(file) {
+	document.querySelector('.main H1').innerText = file;
+	document.querySelector('.main IMG').setAttribute('src', file);
+}
+
+window.onload = () => {
+	document.querySelectorAll('A').forEach(a => {
+		a.addEventListener('click', event => {
+			view(event.currentTarget.querySelector('IMG').getAttribute('src'));
+			event.preventDefault();
+		});
+	});
+	view(document.querySelector('A IMG').getAttribute('src'));
+	setInterval(() => {
+		if (document.querySelector('.right').scrollTop === 0)
+			location.reload();
+	}, 5000);
+};
+
+customElements.define(
+	"gal-item",
+	class extends HTMLElement {
+		connectedCallback() {
+			const content = document.getElementById("gal-item").content.cloneNode(true);
+			content.querySelector('SLOT').innerText = this.getAttribute('name');
+			content.querySelector('IMG').src = this.getAttribute('src');
+			this.appendChild(content);
+		}
+	},
+);
+
+</script>
+</head>
+
+<body>
+
+<template id="gal-item">
+	<a href="#">
+		<img />
+		<h2><slot name="name">-</slot></h2>
+	</a>
+</template>
+
+<section class="main">
+	<h1>-</h1>
+	<img src="" />
+</section>
+
+<section class="right">
+	<h1>${title}</h1>
+	${content}
+</section>
+
+</body>
+
+</html>
