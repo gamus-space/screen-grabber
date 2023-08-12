@@ -6,13 +6,18 @@ const { pathToFileURL } = require('url');
 const { screenshot } = require('./screenshot');
 
 if (process.argv.length < 5) {
-	console.error("usage: grabber.js window_title file_path_template interval_sec");
+	console.error("usage: grabber.js window_title file_path_template interval_sec scale=1");
 	process.exit(1);
 }
-const [, , title, template, interval_str] = process.argv;
+const [, , title, template, interval_str, scale_str] = process.argv;
 const interval = parseInt(interval_str);
 if (isNaN(interval) || interval <= 0) {
 	console.error("invalid interval: " + interval_str);
+	process.exit(1);
+}
+const scale = parseInt(scale_str ?? 1);
+if (isNaN(scale) || scale <= 0) {
+	console.error("invalid scale: " + scale_str);
 	process.exit(1);
 }
 const htmlTemplate = fs.readFileSync('template.html', 'utf-8');
@@ -29,15 +34,16 @@ let files = fs.readdirSync(path.dirname(template))
 	.filter(file => file.startsWith(prefix))
 	.filter(file => file.endsWith(suffix))
 	.reverse();
+const ifNaN = (v, defaultV) => isNaN(v) || v === undefined ? defaultV : v;
 let max = files.reduce(
-	(max, file) => Math.max(max, parseInt(file.substr(prefix.length)) || -1), -1
+	(max, file) => Math.max(max, ifNaN(parseInt(file.substr(prefix.length)), -1)), -1
 );
 
 const grab = async () => {
 	try {
 		const next = template.replace(/(0+)(?!.*\1)/, (max+1).toString().padStart(numberLength, '0'));
-		console.log(`+ ${next}`);
-		console.log(' ', await screenshot(title, next));
+		console.log(` + ${next}`);
+		console.log(await screenshot(title, next, scale));
 		max = max + 1;
 		files = [path.basename(next), ...files];
 		fs.writeFileSync(htmlPath, htmlTemplate

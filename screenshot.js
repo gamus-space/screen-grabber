@@ -53,10 +53,10 @@ function getWindow(title) {
 	}
 }
 
-async function screenshot(title, path) {
+async function screenshot(title, path, scale = 1) {
 	const wnd = getWindow(title);
 
-	const scale = GetDpiForWindow(wnd) / 96;
+	const dpi = GetDpiForWindow(wnd) / 96;
 
 	const rect = {};
 	if (!GetClientRect(wnd, rect)) throw 'GetClientRect';
@@ -67,7 +67,7 @@ async function screenshot(title, path) {
 	const dc = CreateCompatibleDC(screen);
 	if (dc === 0) throw 'CreateCompatibleDC';
 
-	const bmp = CreateCompatibleBitmap(screen, rect.w * scale, rect.h * scale);
+	const bmp = CreateCompatibleBitmap(screen, rect.w * dpi, rect.h * dpi);
 	if (bmp === 0) throw 'CreateCompatibleBitmap';
 
 	const obj = SelectObject(dc, bmp);
@@ -85,18 +85,44 @@ async function screenshot(title, path) {
 	const size = header.height * header.width * header.bpp/8;
 	const data = new Uint8Array(size);
 	if (GetDIBits(dc, bmp, 0, header.height, data, header, 0) !== header.height) throw 'GetDIBits';
+	if (header.planes !== 1) throw 'unsupported planes !== 1';
 
-	file = new DataView(new Uint8Array(0x36 + size).buffer);
+	const px = {
+		24: o => data[o*3] | (data[o*3+1] >> 8) | (data[o*3+2] >> 16),
+	}[header.bpp];
+	if (!px) throw `unsupported bpp ${header.bpp}`;
+	for (let y = 0; y < header.height; y++) {
+		for (let x = 0; x < header.width; x++) {
+			const o = y * header.width + x;
+			const ref = o - (o % scale);
+			if (px(o) !== px(ref)) throw `scale mismatch row ${y} col ${x}`;
+		}
+	}
+	const lineSize = header.width * header.bpp/8;
+	for (let y = 0; y < header.height; y++) {
+		const ref = y - (y % scale);
+		const line = data.slice(y * lineSize, (y+1) * lineSize);
+		const refLine = data.slice(ref * lineSize, (ref+1) * lineSize);
+		if (!line.every((v, i) => refLine[i] === v)) throw `scale mismatch row ${y}`;
+	}
+
+	const snapshot = { width: header.width / scale, height: header.height / scale, bpp: header.bpp, scale };
+	file = new DataView(new Uint8Array(0x36 + snapshot.width*snapshot.height*snapshot.bpp/8).buffer);
 	file.setUint16(0, 0x424D, false);
 	file.setUint32(0x2, file.byteLength, true);
 	file.setUint32(0xa, 0x36, true);
 	file.setUint32(0xe, 40, true);
-	file.setUint32(0x12, header.width, true);
-	file.setUint32(0x16, header.height, true);
+	file.setUint32(0x12, snapshot.width, true);
+	file.setUint32(0x16, snapshot.height, true);
 	file.setUint16(0x1a, header.planes, true);
-	file.setUint16(0x1c, header.bpp, true);
-	for (let i = 0; i < size; i++)
-		file.setUint8(0x36 + i, data[i]);
+	file.setUint16(0x1c, snapshot.bpp, true);
+	for (let y = 0; y < snapshot.height; y++)
+		for (let x = 0; x < snapshot.width; x++)
+			for (let b = 0; b < snapshot.bpp/8; b++)
+				file.setUint8(
+					0x36 + y * snapshot.width * snapshot.bpp/8 + x * snapshot.bpp/8 + b,
+					data[scale*scale*y * snapshot.width * snapshot.bpp/8 + scale*x * snapshot.bpp/8 + b],
+				);
 	
 	if (!DeleteDC(dc)) throw 'DeleteDC';
 	if (!DeleteObject(bmp)) throw 'DeleteObject';
@@ -104,19 +130,23 @@ async function screenshot(title, path) {
 	
 	const image = await Jimp.read(file.buffer);
 	await image.writeAsync(path);
-	return header;
+	return { screen: header, file: snapshot };
 }
 
 exports.screenshot = screenshot;
 
 if (require.main === module) {
 	if (process.argv.length < 4) {
-		console.error("usage: screenshot.js window_title file_path");
+		console.error("usage: screenshot.js window_title file_path scale=1");
 		process.exit(1);
 	}
 	(async () => {
 		try {
-			console.log(await screenshot(process.argv[2], process.argv[3]));
+			console.log(await screenshot(
+				process.argv[2],
+				process.argv[3],
+				process.argv[4] ? parseInt(process.argv[4]) : 1,
+			));
 		} catch (e) {
 			console.log('error', e);
 		}
