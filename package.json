@@ -10,6 +10,7 @@
   "license": "ISC",
   "dependencies": {
     "jimp": "^0.22.8",
-    "koffi": "^2.5.3"
+    "koffi": "^2.5.3",
+    "webp-converter": "^2.3.3"
   }
 }

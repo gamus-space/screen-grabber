@@ -10,7 +10,7 @@ if (process.argv.length < 5) {
 	process.exit(1);
 }
 const [, , title, template, interval_str, scale_str] = process.argv;
-const interval = parseInt(interval_str);
+const interval = parseFloat(interval_str);
 if (isNaN(interval) || interval <= 0) {
 	console.error("invalid interval: " + interval_str);
 	process.exit(1);

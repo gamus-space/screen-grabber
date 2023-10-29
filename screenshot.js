@@ -1,6 +1,11 @@
+const fs = require('fs');
+const path = require('path');
+const process = require('process');
+const os = require('os');
+
 const Jimp = require('jimp');
 const koffi = require('koffi');
-const process = require('process');
+const webp = require('webp-converter');
 
 if (process.platform !== "win32") {
 	console.error('This program must be run under Win32');
@@ -53,7 +58,7 @@ function getWindow(title) {
 	}
 }
 
-async function screenshot(title, path, scale = 1) {
+async function screenshot(title, filePath, scale = 1) {
 	const wnd = getWindow(title);
 
 	const dpi = GetDpiForWindow(wnd) / 96;
@@ -128,8 +133,16 @@ async function screenshot(title, path, scale = 1) {
 	if (!DeleteObject(bmp)) throw 'DeleteObject';
 	if (!ReleaseDC(0, screen)) throw 'ReleaseDC';
 	
-	const image = await Jimp.read(file.buffer);
-	await image.writeAsync(path);
+	if (filePath.match(/\.webp$/)) {
+		const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'screenshot-'));
+		const tempFile = path.join(tempDir, path.basename(filePath, '.webp') + '.bmp');
+		fs.writeFileSync(tempFile, Buffer.from(file.buffer));
+		await webp.cwebp(tempFile, filePath, '-lossless -q 100');
+		fs.rmSync(tempDir, { recursive: true });
+	} else {
+		const image = await Jimp.read(file.buffer);
+		await image.writeAsync(filePath);
+	}
 	return { screen: header, file: snapshot };
 }
 
