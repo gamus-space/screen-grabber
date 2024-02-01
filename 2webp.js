@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const process = require('process');
 const webp = require('webp-converter');
+const { tree } = require('./lib');
 
 if (process.argv.length < 5) {
 	console.error("usage: 2webp.js in_format in_path out_path");
@@ -9,23 +10,6 @@ if (process.argv.length < 5) {
 }
 const [, , format, in_path, out_path] = process.argv;
 const suffix = `.${format}`;
-
-function tree(root) {
-  let queue = [''];
-  let result = [];
-  while (queue.length > 0) {
-    const dir = queue.shift();
-    fs.readdirSync(`${root}/${dir}`).forEach(entry => {
-      const entryPath = `${dir === '' ? '' : dir + '/'}${entry}`;
-      const stat = fs.statSync(`${root}/${entryPath}`);
-      if (stat.isDirectory())
-        queue.push(entryPath);
-      else
-        result.push(entryPath);
-    });
-  }
-  return result;
-}
 
 (async () => {
 	const files = fs.statSync(in_path).isDirectory() ?

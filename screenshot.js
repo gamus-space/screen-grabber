@@ -100,15 +100,17 @@ async function screenshot(title, filePath, scale = 1) {
 		for (let x = 0; x < header.width; x++) {
 			const o = y * header.width + x;
 			const ref = o - (o % scale);
-			if (px(o) !== px(ref)) throw `scale mismatch row ${y} col ${x}`;
+			if (ref === o) continue;
+			if (px(o) !== px(ref)) throw `scale mismatch row ${header.height-y} col ${x}`;
 		}
 	}
 	const lineSize = header.width * header.bpp/8;
 	for (let y = 0; y < header.height; y++) {
 		const ref = y - (y % scale);
+		if (ref === y) continue;
 		const line = data.slice(y * lineSize, (y+1) * lineSize);
 		const refLine = data.slice(ref * lineSize, (ref+1) * lineSize);
-		if (!line.every((v, i) => refLine[i] === v)) throw `scale mismatch row ${y}`;
+		if (!line.every((v, i) => refLine[i] === v)) throw `scale mismatch row ${header.height-y}`;
 	}
 
 	const snapshot = { width: header.width / scale, height: header.height / scale, bpp: header.bpp, scale };

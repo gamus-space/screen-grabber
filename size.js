@@ -1,25 +1,11 @@
 const fs = require('fs');
 const path = require('path');
 const process = require('process');
+const os = require('os');
 
 const Jimp = require('jimp');
-
-function tree(root) {
-  let queue = [''];
-  let result = [];
-  while (queue.length > 0) {
-    const dir = queue.shift();
-    fs.readdirSync(`${root}/${dir}`).forEach(entry => {
-      const entryPath = `${dir === '' ? '' : dir + '/'}${entry}`;
-      const stat = fs.statSync(`${root}/${entryPath}`);
-      if (stat.isDirectory())
-        queue.push(entryPath);
-      else
-        result.push(entryPath);
-    });
-  }
-  return result;
-}
+const webp = require('webp-converter');
+const { tree } = require('./lib');
 
 if (process.argv.length < 4) {
 	console.error("usage: size.js format dir");
@@ -28,8 +14,20 @@ if (process.argv.length < 4) {
 const [, , format, dir] = process.argv;
 
 (async () => {
+	let tempDir;
+	if (format === 'webp') {
+		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'size-'));
+	}
 	for (const file of tree(dir).filter(file => file.endsWith(`.${format}`))) {
-		const image = await Jimp.read(path.join(dir, file));
+		let tempFile;
+		if (format === 'webp') {
+			tempFile = path.join(tempDir, path.basename(file, '.webp') + '.bmp');
+			await webp.dwebp(path.join(dir, file), tempFile, '-o');
+		}
+		const image = await Jimp.read(tempFile ?? path.join(dir, file));
 		console.log(`${image.bitmap.width}x${image.bitmap.height}`, file)
+	}
+	if (format === 'webp') {
+		fs.rmSync(tempDir, { recursive: true });
 	}
 })();
