@@ -25,7 +25,13 @@ const [, , format, dir] = process.argv;
 			await webp.dwebp(path.join(dir, file), tempFile, '-o');
 		}
 		const image = await Jimp.read(tempFile ?? path.join(dir, file));
-		console.log(`${image.bitmap.width}x${image.bitmap.height}`, file);
+		const colors = {};
+		for (const { x, y } of image.scanIterator(0, 0, image.bitmap.width, image.bitmap.height)) {
+			colors[image.getPixelColor(x, y)] = (colors[image.getPixelColor(x, y)] ?? 0) + 1;
+		}
+		const distinct = Object.keys(colors).length;
+		const bpp = distinct <= 16 ? 4 : distinct <= 256 ? 8 : distinct <= 65536 ? 16 : 24;
+		console.log(`${bpp}bit`, `(${distinct})`, file);
 	}
 	if (format === 'webp') {
 		fs.rmSync(tempDir, { recursive: true });
