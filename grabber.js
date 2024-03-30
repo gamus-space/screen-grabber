@@ -3,13 +3,14 @@ const path = require('path');
 const process = require('process');
 const readline = require('readline/promises');
 const { pathToFileURL } = require('url');
+const { parseSize } = require('./lib');
 const { screenshot } = require('./screenshot');
 
 if (process.argv.length < 5) {
-	console.error("usage: grabber.js window_title file_path_template interval_sec scale=1");
+	console.error("usage: grabber.js window_title file_path_template interval_sec scale=1 crop=WIDTHxHEIGHT");
 	process.exit(1);
 }
-const [, , title, template, interval_str, scale_str] = process.argv;
+const [, , title, template, interval_str, scale_str, crop_str] = process.argv;
 const interval = parseFloat(interval_str);
 if (isNaN(interval) || interval <= 0) {
 	console.error("invalid interval: " + interval_str);
@@ -20,6 +21,7 @@ if (isNaN(scale) || scale <= 0) {
 	console.error("invalid scale: " + scale_str);
 	process.exit(1);
 }
+const crop = parseSize(crop_str);
 const htmlTemplate = fs.readFileSync('template.html', 'utf-8');
 const htmlPath = path.join(path.dirname(template), 'index.html');
 console.log(`@${title} -> ${template} ${pathToFileURL(htmlPath)}`);
@@ -43,7 +45,7 @@ const grab = async () => {
 	try {
 		const next = template.replace(/(0+)(?!.*\1)/, (max+1).toString().padStart(numberLength, '0'));
 		console.log(` + ${next}`);
-		console.log(await screenshot(title, next, scale));
+		console.log(await screenshot(title, next, scale, crop));
 		max = max + 1;
 		files = [path.basename(next), ...files];
 		fs.writeFileSync(htmlPath, htmlTemplate

@@ -7,6 +7,8 @@ const Jimp = require('jimp');
 const koffi = require('koffi');
 const webp = require('webp-converter');
 
+const { parseSize } = require('./lib');
+
 if (process.platform !== "win32") {
 	console.error('This program must be run under Win32');
 	process.exit(1);
@@ -58,7 +60,7 @@ function getWindow(title) {
 	}
 }
 
-async function screenshot(title, filePath, scale = 1) {
+async function screenshot(title, filePath, scale = 1, crop = null) {
 	const wnd = getWindow(title);
 
 	const dpi = GetDpiForWindow(wnd) / 96;
@@ -87,8 +89,7 @@ async function screenshot(title, filePath, scale = 1) {
 
 	const header = { size: koffi.sizeof('BITMAPCOREHEADER') };
 	if (!GetDIBits(dc, bmp, 0, 0, 0, header, 0)) throw 'GetDIBits';
-	const size = header.height * header.width * header.bpp/8;
-	const data = new Uint8Array(size);
+	const data = new Uint8Array(header.height * header.width * header.bpp/8);
 	if (GetDIBits(dc, bmp, 0, header.height, data, header, 0) !== header.height) throw 'GetDIBits';
 	if (header.planes !== 1) throw 'unsupported planes !== 1';
 
@@ -113,7 +114,34 @@ async function screenshot(title, filePath, scale = 1) {
 		if (!line.every((v, i) => refLine[i] === v)) throw `scale mismatch row ${header.height-y}`;
 	}
 
-	const snapshot = { width: header.width / scale, height: header.height / scale, bpp: header.bpp, scale };
+	if (crop) {
+		for (let y = 0; y < (header.height - crop[1]*scale) / 2; y++) {
+			for (let x = 0; x < header.width; x++) {
+				const o = y * header.width + x;
+				if (px(o) !== 0) throw `crop bottom not black row ${header.height-y} col ${x}`;
+			}
+		}
+		for (let y = header.height - (header.height - crop[1]*scale) / 2; y < header.height; y++) {
+			for (let x = 0; x < header.width; x++) {
+				const o = y * header.width + x;
+				if (px(o) !== 0) throw `crop top not black row ${header.height-y} col ${x}`;
+			}
+		}
+		for (let y = (header.height - crop[1]) / 2; y < header.height - (header.height - crop[1]) / 2; y++) {
+			for (let x = 0; x < (header.width - crop[0]*scale) / 2; x++) {
+				const o = y * header.width + x;
+				if (px(o) !== 0) throw `crop left not black row ${header.height-y} col ${x}`;
+			}
+			for (let x = header.width - (header.width - crop[0]*scale) / 2; x < header.width; x++) {
+				const o = y * header.width + x;
+				if (px(o) !== 0) throw `crop right not black row ${header.height-y} col ${x}`;
+			}
+		}
+	}
+
+	const size = crop ?? [header.width / scale, header.height / scale];
+	const offset = crop ? [(header.width/scale - crop[0]) / 2, (header.height/scale - crop[1]) / 2] : [0, 0];
+	const snapshot = { width: size[0], height: size[1], bpp: header.bpp, scale };
 	file = new DataView(new Uint8Array(0x36 + snapshot.width*snapshot.height*snapshot.bpp/8).buffer);
 	file.setUint16(0, 0x424D, false);
 	file.setUint32(0x2, file.byteLength, true);
@@ -128,7 +156,7 @@ async function screenshot(title, filePath, scale = 1) {
 			for (let b = 0; b < snapshot.bpp/8; b++)
 				file.setUint8(
 					0x36 + y * snapshot.width * snapshot.bpp/8 + x * snapshot.bpp/8 + b,
-					data[scale*scale*y * snapshot.width * snapshot.bpp/8 + scale*x * snapshot.bpp/8 + b],
+					data[scale*scale*(y+offset[1]) * header.width/scale * snapshot.bpp/8 + scale*(x+offset[0]) * snapshot.bpp/8 + b],
 				);
 	
 	if (!DeleteDC(dc)) throw 'DeleteDC';
@@ -152,7 +180,7 @@ exports.screenshot = screenshot;
 
 if (require.main === module) {
 	if (process.argv.length < 4) {
-		console.error("usage: screenshot.js window_title file_path scale=1");
+		console.error("usage: screenshot.js window_title file_path scale=1 crop=WIDTHxHEIGHT");
 		process.exit(1);
 	}
 	(async () => {
@@ -161,6 +189,7 @@ if (require.main === module) {
 				process.argv[2],
 				process.argv[3],
 				process.argv[4] ? parseInt(process.argv[4]) : 1,
+				parseSize(process.argv[5]),
 			));
 		} catch (e) {
 			console.log('error', e);

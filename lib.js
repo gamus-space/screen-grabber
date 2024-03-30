@@ -20,3 +20,12 @@ function tree(root) {
 }
 
 exports.tree = tree;
+
+function parseSize(sizeStr) {
+	if (sizeStr == null) return null;
+	const match = sizeStr.match(/^(\d+)x(\d+)$/);
+	if (!match) throw new Error(`invalid size: ${sizeStr}`);
+	return [parseInt(match[1]), parseInt(match[2])];
+}
+
+exports.parseSize = parseSize;
