@@ -29,3 +29,11 @@ function parseSize(sizeStr) {
 }
 
 exports.parseSize = parseSize;
+
+function parseSizeOpt(sizeStr) {
+	if (sizeStr == null) return null;
+	const match = sizeStr.match(/^(\d+)?x(\d+)?$/);
+	return [match[1] && parseInt(match[1]), match[2] && parseInt(match[2])];
+}
+
+exports.parseSizeOpt = parseSizeOpt;

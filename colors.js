@@ -16,7 +16,7 @@ const [, , format, dir] = process.argv;
 (async () => {
 	let tempDir;
 	if (format === 'webp') {
-		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'size-'));
+		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'colors-'));
 	}
 	for (const file of tree(dir).filter(file => file.endsWith(`.${format}`))) {
 		let tempFile;
