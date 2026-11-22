@@ -7,6 +7,7 @@ const Jimp = require('jimp');
 const koffi = require('koffi');
 const webp = require('webp-converter');
 
+const { adjustGamma, gammaTable } = require('./gamma.mjs');
 const { parseSize } = require('./lib');
 
 if (process.platform !== "win32") {
@@ -18,17 +19,17 @@ const user32 = koffi.load('user32.dll');
 const gdi32 = koffi.load('gdi32.dll');
 const Rect = koffi.struct('Rect', { x: 'int', y: 'int', w: 'int', h: 'int', z: 'int' });
 const GetClientRect = user32.func('int __stdcall GetClientRect(int hwnd, _Out_ Rect *rect)');
-const GetDpiForWindow = user32.stdcall('GetDpiForWindow', 'int', ['int']);
-const GetDC = user32.stdcall('GetDC', 'int', ['int']);
-const CreateCompatibleDC = gdi32.stdcall('CreateCompatibleDC', 'int', ['int']);
-const CreateCompatibleBitmap = gdi32.stdcall('CreateCompatibleBitmap', 'int', ['int', 'int', 'int']);
-const SelectObject = gdi32.stdcall('SelectObject', 'int', ['int', 'int']);
-const PrintWindow = user32.stdcall('PrintWindow', 'bool', ['int', 'int', 'uint']);
-const DeleteDC = gdi32.stdcall('DeleteDC', 'bool', ['int']);
-const DeleteObject = gdi32.stdcall('DeleteObject', 'bool', ['int']);
-const ReleaseDC = user32.stdcall('ReleaseDC', 'bool', ['int', 'int']);
+const GetDpiForWindow = user32.func("__stdcall", 'GetDpiForWindow', 'int', ['int']);
+const GetDC = user32.func("__stdcall", 'GetDC', 'int', ['int']);
+const CreateCompatibleDC = gdi32.func("__stdcall", 'CreateCompatibleDC', 'int', ['int']);
+const CreateCompatibleBitmap = gdi32.func("__stdcall", 'CreateCompatibleBitmap', 'int', ['int', 'int', 'int']);
+const SelectObject = gdi32.func("__stdcall", 'SelectObject', 'int', ['int', 'int']);
+const PrintWindow = user32.func("__stdcall", 'PrintWindow', 'bool', ['int', 'int', 'uint']);
+const DeleteDC = gdi32.func("__stdcall", 'DeleteDC', 'bool', ['int']);
+const DeleteObject = gdi32.func("__stdcall", 'DeleteObject', 'bool', ['int']);
+const ReleaseDC = user32.func("__stdcall", 'ReleaseDC', 'bool', ['int', 'int']);
 
-const FindWindow = user32.stdcall('FindWindowA', 'int', ['str', 'str']);
+const FindWindow = user32.func("__stdcall", 'FindWindowA', 'int', ['str', 'str']);
 const EnumWindowsCallback = koffi.proto('bool EnumWindowsCallback(int wnd, int param)');
 const EnumWindows = user32.func('EnumWindows', 'bool', [koffi.pointer(EnumWindowsCallback), 'int']);
 const GetWindowText = user32.func('int __stdcall GetWindowTextA(int wnd, _Out_ str bits, int maxcount)');
@@ -36,10 +37,10 @@ const GetWindowText = user32.func('int __stdcall GetWindowTextA(int wnd, _Out_ s
 const BITMAPCOREHEADER = koffi.struct('BITMAPCOREHEADER', { size: 'long', width: 'short', height: 'short', planes: 'short', bpp: 'short' });
 const GetDIBits = gdi32.func('int __stdcall GetDIBits(int dc, int bitmap, uint start, uint lines, _Inout_ void *bits, _Inout_ BITMAPCOREHEADER *header, uint usage)');
 
-const OpenClipboard = user32.stdcall('OpenClipboard', 'int', ['int']);
-const EmptyClipboard = user32.stdcall('EmptyClipboard', 'int', []);
-const SetClipboardData = user32.stdcall('SetClipboardData', 'int', ['int', 'int']);
-const CloseClipboard = user32.stdcall('CloseClipboard', 'int', []);
+const OpenClipboard = user32.func("__stdcall", 'OpenClipboard', 'int', ['int']);
+const EmptyClipboard = user32.func("__stdcall", 'EmptyClipboard', 'int', []);
+const SetClipboardData = user32.func("__stdcall", 'SetClipboardData', 'int', ['int', 'int']);
+const CloseClipboard = user32.func("__stdcall", 'CloseClipboard', 'int', []);
 
 function getWindow(title) {
 	const windows = {};
@@ -60,7 +61,7 @@ function getWindow(title) {
 	}
 }
 
-async function screenshot(title, filePath, scale = 1, crop = null) {
+async function screenshot(title, filePath, scale = 1, crop = null, gamma = 1, gammaTable = undefined) {
 	const wnd = getWindow(title);
 
 	const dpi = GetDpiForWindow(wnd) / 96;
@@ -166,11 +167,20 @@ async function screenshot(title, filePath, scale = 1, crop = null) {
 	if (filePath.match(/\.webp$/)) {
 		const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'screenshot-'));
 		const tempFile = path.join(tempDir, path.basename(filePath, '.webp') + '.bmp');
-		fs.writeFileSync(tempFile, Buffer.from(file.buffer));
+		if (gamma !== 1 && gammaTable) {
+			const image = await Jimp.read(file.buffer);
+			adjustGamma(image, gamma, gammaTable);
+			await image.writeAsync(tempFile);
+		} else {
+			fs.writeFileSync(tempFile, Buffer.from(file.buffer));
+		}
 		await webp.cwebp(tempFile, filePath, '-lossless -q 100');
 		fs.rmSync(tempDir, { recursive: true });
 	} else {
 		const image = await Jimp.read(file.buffer);
+		if (gamma !== 1 && gammaTable) {
+			adjustGamma(image, gamma, gammaTable);
+		}
 		await image.writeAsync(filePath);
 	}
 	return { screen: header, file: snapshot };
@@ -184,12 +194,19 @@ if (require.main === module) {
 		process.exit(1);
 	}
 	(async () => {
+		const kwargs = Object.fromEntries(process.argv.slice(4).map(kwarg => kwarg.split('=')));
+		const scale = parseInt(kwargs.scale || 1);
+		const crop = parseSize(kwargs.crop);
+		const gamma = parseFloat(kwargs.gamma ?? 1);
+		const gammaLUT = gamma === 1 ? undefined : gammaTable(gamma);
 		try {
 			console.log(await screenshot(
 				process.argv[2],
 				process.argv[3],
-				process.argv[4] ? parseInt(process.argv[4]) : 1,
-				parseSize(process.argv[5]),
+				scale,
+				crop,
+				gamma,
+				gammaLUT,
 			));
 		} catch (e) {
 			console.log('error', e);
